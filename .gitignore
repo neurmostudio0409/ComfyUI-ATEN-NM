@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+config/.env
+*.wav
+*.mp3
+dist/
+.pytest_cache/
+
+# 本機工具設定，不入版控
+.claude/
+.mcp.json
