@@ -12,10 +12,19 @@ def load_audio_as_comfyui_format(audio_path: str):
     try:
         # torch/soundfile 延遲載入：CI 或非 ComfyUI 環境不需安裝
         import torch
-        import soundfile as sf
-        waveform, sample_rate = sf.read(audio_path)
 
-        waveform_tensor = torch.from_numpy(waveform).float()
+        waveform_tensor = None
+        sample_rate = None
+        try:
+            import soundfile as sf
+            waveform, sample_rate = sf.read(audio_path)
+            waveform_tensor = torch.from_numpy(waveform).float()
+        except ImportError:
+            # soundfile 未安裝時改用 ComfyUI 內建的 torchaudio
+            print("⚠️ soundfile 未安裝，改用 torchaudio 載入")
+            import torchaudio
+            waveform_tensor, sample_rate = torchaudio.load(audio_path)
+            waveform_tensor = waveform_tensor.float()
 
         # 確保形狀為 [batch, channels, samples]
         if len(waveform_tensor.shape) == 1:
