@@ -155,7 +155,13 @@ class AtenAPI:
         resp = self.session.get(url, timeout=30)
         self._raise_for_error(resp, "查詢聲優列表失敗")
         data = resp.json()
-        models = data.get("data", []) if isinstance(data, dict) else []
+        # atzone 版回傳裸陣列 [{...}]；PDF 文件寫的是 {"data": [...]}，兩種都支援
+        if isinstance(data, list):
+            models = data
+        elif isinstance(data, dict):
+            models = data.get("data", [])
+        else:
+            models = []
         return models if isinstance(models, list) else []
 
     # ------------------------------------------------------------------
