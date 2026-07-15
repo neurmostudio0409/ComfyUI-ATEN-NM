@@ -99,8 +99,10 @@ def test_build_ssml_prosody_and_lang(pkg):
 # API 客戶端（不打網路）
 # ----------------------------------------------------------------------
 
-def test_api_requires_token(pkg):
+def test_api_requires_token(pkg, monkeypatch):
+    """無 token 須拋 ValueError（清掉環境變數，避免本機 .env 影響）"""
     api = _api_module()
+    monkeypatch.delenv("ATEN_API_TOKEN", raising=False)
     with pytest.raises(ValueError):
         api.AtenAPI(api_token=None)
 

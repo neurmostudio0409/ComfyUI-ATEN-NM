@@ -66,8 +66,10 @@ POST /api/v1/syntheses/api_token  (SSML v1.5)
         ↓ synthesis_id
 輪詢 GET /api/v1/syntheses/{id}/api_token 直到 Success
         ↓ synthesis_path
-GET synthesis_path → WAV 存到 ComfyUI output/ → 轉為 AUDIO 輸出
+GET synthesis_path → WAV 下載到 temp（載入後即刪）→ 轉為 AUDIO 輸出
 ```
+
+節點本身**不會**把音檔存進 `output/` — 要保存請接下游的 **SaveAudio** 節點（檔名由其 `filename_prefix` 決定），這樣才不會同一段語音被存兩次。
 
 ## API 限制（來自官方文件）
 

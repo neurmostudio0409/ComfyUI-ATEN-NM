@@ -15,7 +15,7 @@ from ..config.settings import (
     DEFAULT_VOICES,
     LANGUAGE_OPTIONS,
 )
-from .aten_api import AtenAPI, AtenAPIError, build_ssml
+from .aten_api import AtenAPI, AtenAPIError, build_ssml, get_temp_directory
 from .audio_utils import load_audio_as_comfyui_format
 
 # 全域變數：快取聲優列表
@@ -57,22 +57,30 @@ def _print_api_key_help():
     print("3. 企業/離線版客戶請一併設定 ATEN_API_URL")
 
 
-def _synthesize_and_load(ssml: str, output_filename: str, silence_scale: float, timeout: float):
-    """共用：送出 SSML 合成並載入為 AUDIO"""
+def _synthesize_and_load(ssml: str, silence_scale: float, timeout: float):
+    """
+    共用：送出 SSML 合成並載入為 AUDIO。
+    音檔只下載到 temp 目錄，載入後即刪除——正式保存交給下游 SaveAudio，
+    避免同一段語音被保存兩次。
+    """
     api = AtenAPI()
     audio_path = api.synthesize_to_file(
         ssml,
-        output_filename=output_filename,
+        output_filename="aten_tts",
         silence_scale=silence_scale,
         timeout=timeout,
+        output_dir=get_temp_directory(),
     )
 
     if audio_path and os.path.exists(audio_path):
         print("=" * 60)
         print("✅ 語音生成完成！")
-        print(f"📁 輸出: {audio_path}")
         print("=" * 60)
         audio_dict, _ = load_audio_as_comfyui_format(audio_path)
+        try:
+            os.remove(audio_path)
+        except OSError:
+            pass
         if audio_dict:
             return (audio_dict,)
     print("❌ 語音生成失敗！")
@@ -144,10 +152,6 @@ class AtenSpeechNode:
                     "step": 30,
                     "tooltip": "合成等待逾時（秒）",
                 }),
-                "output_filename": ("STRING", {
-                    "default": "aten_speech",
-                    "tooltip": "輸出檔案名稱",
-                }),
             },
         }
 
@@ -166,7 +170,6 @@ class AtenSpeechNode:
         volume=0.0,
         silence_scale=1.0,
         timeout=300,
-        output_filename="aten_speech",
     ):
         print("=" * 60)
         print("🎙️ ATEN AIVoice 語音生成")
@@ -188,7 +191,7 @@ class AtenSpeechNode:
         print(f"📝 SSML: {ssml[:200]}{'...' if len(ssml) > 200 else ''}")
 
         try:
-            result = _synthesize_and_load(ssml, output_filename, silence_scale, float(timeout))
+            result = _synthesize_and_load(ssml, silence_scale, float(timeout))
             return (result[0], ssml)
         except ValueError as e:
             print(f"❌ API 初始化失敗: {e}")
@@ -238,10 +241,6 @@ class AtenSSMLNode:
                     "step": 30,
                     "tooltip": "合成等待逾時（秒）",
                 }),
-                "output_filename": ("STRING", {
-                    "default": "aten_ssml",
-                    "tooltip": "輸出檔案名稱",
-                }),
             },
         }
 
@@ -250,7 +249,7 @@ class AtenSSMLNode:
     FUNCTION = "generate_from_ssml"
     CATEGORY = CATEGORY_TTS
 
-    def generate_from_ssml(self, ssml, silence_scale=1.0, timeout=300, output_filename="aten_ssml"):
+    def generate_from_ssml(self, ssml, silence_scale=1.0, timeout=300):
         print("=" * 60)
         print("🎙️ ATEN AIVoice SSML 合成")
         print("=" * 60)
@@ -260,7 +259,7 @@ class AtenSSMLNode:
             return (None,)
 
         try:
-            return _synthesize_and_load(ssml, output_filename, silence_scale, float(timeout))
+            return _synthesize_and_load(ssml, silence_scale, float(timeout))
         except ValueError as e:
             print(f"❌ API 初始化失敗: {e}")
             _print_api_key_help()

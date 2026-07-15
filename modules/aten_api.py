@@ -33,11 +33,26 @@ load_env()
 try:
     import folder_paths
 except ImportError:
+    import tempfile
+
     class FolderPaths:
         @staticmethod
         def get_output_directory():
             return os.path.join(os.getcwd(), "output")
+
+        @staticmethod
+        def get_temp_directory():
+            return os.path.join(tempfile.gettempdir(), "comfyui_aten")
     folder_paths = FolderPaths()
+
+
+def get_temp_directory() -> str:
+    """取得暫存目錄（合成的 WAV 放這裡，正式保存交給下游 SaveAudio）"""
+    try:
+        return folder_paths.get_temp_directory()
+    except Exception:
+        import tempfile
+        return os.path.join(tempfile.gettempdir(), "comfyui_aten")
 
 
 def escape_ssml_text(text: str) -> str:
@@ -293,9 +308,14 @@ class AtenAPI:
         silence_scale: Optional[float] = None,
         poll_interval: float = 1.0,
         timeout: float = 300.0,
+        output_dir: Optional[str] = None,
     ) -> str:
         """
         送出 SSML → 輪詢 → 下載 WAV，回傳檔案路徑
+
+        Args:
+            output_dir: 儲存目錄。未指定時存到 ComfyUI output/；
+                        節點內部會傳入 temp 目錄，避免與下游 SaveAudio 重複保存。
         """
         print(f"📤 送出合成任務（{len(ssml)} 字元 SSML）...")
         result = self.synthesize_ssml(ssml, silence_scale=silence_scale)
@@ -312,7 +332,8 @@ class AtenAPI:
         if not synthesis_path:
             raise AtenAPIError("找不到 synthesis_path，無法下載音檔")
 
-        output_dir = folder_paths.get_output_directory()
+        if output_dir is None:
+            output_dir = folder_paths.get_output_directory()
         os.makedirs(output_dir, exist_ok=True)
         output_path = get_unique_filename(output_dir, output_filename, "wav")
 
