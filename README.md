@@ -1,9 +1,7 @@
 # ComfyUI-ATEN-NM
 
-ATEN AIVoice（宏正自動科技）TTS 語音合成的 ComfyUI 自製節點套件。
+ATEN AIVoice TTS 語音合成的 ComfyUI 自製節點套件。
 支援中文、英文、台語（TL/TB）、客語（HA/HB）語音合成，輸出 ComfyUI `AUDIO` 格式，可直接串接語音對嘴（wav2lip / LatentSync）、影片配音等下游節點。
-
-依 **ATEN AIVoice API 使用說明 v1.2.111** 實作。
 
 ## 專案結構
 
@@ -56,8 +54,8 @@ ComfyUI-ATEN-NM/
 
    ```dotenv
    ATEN_API_TOKEN=<your-token>
-   # 企業客戶或離線版才需要改：
-   # ATEN_API_URL=https://www.aivoice.com.tw/business/enterprise
+   # 如需使用其他 API Server 才需要改：
+   # ATEN_API_URL=https://www.aivoice.com.tw/atzone
    ```
 
 4. 重啟 ComfyUI
@@ -74,7 +72,7 @@ GET synthesis_path → WAV 下載到 temp（載入後即刪）→ 轉為 AUDIO �
 
 節點本身**不會**把音檔存進 `output/` — 要保存請接下游的 **SaveAudio** 節點（檔名由其 `filename_prefix` 決定），這樣才不會同一段語音被存兩次。
 
-## API 限制（來自官方文件）
+## API 限制
 
 - Rate limit：**120 次/分鐘**
 - 單次合成上限 **2000 字元**（`<phoneme>` 等 SSML 標籤長度也計入；`<speak>`/`<voice>` 除外）

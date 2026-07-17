@@ -28,9 +28,7 @@ ENV_PATHS = [
 # ----------------------------------------------------------------------
 # API Server 設定
 # ----------------------------------------------------------------------
-# 預設 API Server（綠界付款客戶）。企業客戶請在 .env 設定
-# ATEN_API_URL=https://www.aivoice.com.tw/business/enterprise
-# 離線版客戶設定為 console 上顯示的 http://xxx.xxx.xxx.xxx
+# 可在 .env 以 ATEN_API_URL 覆寫 API Server 位置
 DEFAULT_BASE_URL = "https://www.aivoice.com.tw/atzone"
 
 # 單次合成字數上限（含 SSML tag，不含 <speak>/<voice>）
@@ -78,7 +76,7 @@ LANGUAGE_OPTIONS = {
 DEFAULT_LANGUAGE = "TW (中文)"
 
 # ----------------------------------------------------------------------
-# 附件一 Error codes 對照表
+# Error codes 對照表
 # ----------------------------------------------------------------------
 ERROR_CODES = {
     40301: "沒有使用此 model 的權限",

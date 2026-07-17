@@ -1,6 +1,5 @@
 """
 ATEN AIVoice API 客戶端
-依 ATEN AIVoice API 使用說明 v1.2.111 實作
 
 合成流程：
 1. POST Synthesize SSML 取得 synthesis_id
@@ -122,7 +121,7 @@ def get_unique_filename(output_dir: str, base_name: str, extension: str) -> str:
 
 
 class AtenAPIError(Exception):
-    """ATEN API 錯誤，帶有官方 error code 說明"""
+    """ATEN API 錯誤，帶有 error code 說明"""
 
     def __init__(self, message: str, code: Optional[int] = None):
         self.code = code
@@ -139,7 +138,7 @@ class AtenAPI:
     def __init__(self, api_token: Optional[str] = None, base_url: Optional[str] = None):
         """
         Args:
-            api_token: ATEN API Token（User Settings 取得）。未提供時讀環境變數 ATEN_API_TOKEN。
+            api_token: ATEN API Token。未提供時讀環境變數 ATEN_API_TOKEN。
             base_url: API Server 位置。未提供時讀環境變數 ATEN_API_URL，預設為 atzone。
         """
         self.api_token = api_token or get_api_token()
@@ -149,15 +148,14 @@ class AtenAPI:
             raise ValueError(
                 "找不到 ATEN API Token。請執行以下任一方式：\n"
                 "1. 複製 config/.env.example 為 config/.env 並設定 ATEN_API_TOKEN\n"
-                "2. 初始化 AtenAPI 時提供 api_token 參數\n"
-                "Token 可從 ATEN AIVoice 網站的 User Settings 取得"
+                "2. 初始化 AtenAPI 時提供 api_token 參數"
             )
 
         self.session = requests.Session()
         self.session.headers.update({"Authorization": self.api_token})
 
     # ------------------------------------------------------------------
-    # 四、Query Model (支援聲優查詢)
+    # Query Model（聲優查詢）
     # ------------------------------------------------------------------
     def get_models(self) -> List[Dict[str, Any]]:
         """
@@ -170,7 +168,7 @@ class AtenAPI:
         resp = self.session.get(url, timeout=30)
         self._raise_for_error(resp, "查詢聲優列表失敗")
         data = resp.json()
-        # atzone 版回傳裸陣列 [{...}]；PDF 文件寫的是 {"data": [...]}，兩種都支援
+        # 回傳可能是裸 JSON 陣列 [{...}] 或 {"data": [...]}，兩種格式都支援
         if isinstance(data, list):
             models = data
         elif isinstance(data, dict):
@@ -180,7 +178,7 @@ class AtenAPI:
         return models if isinstance(models, list) else []
 
     # ------------------------------------------------------------------
-    # 五、Synthesize SSML
+    # Synthesize SSML
     # ------------------------------------------------------------------
     def synthesize_ssml(
         self,
@@ -220,7 +218,7 @@ class AtenAPI:
         return resp.json()
 
     # ------------------------------------------------------------------
-    # 六、Get Synthesize Status
+    # Get Synthesize Status
     # ------------------------------------------------------------------
     def get_status(self, synthesis_id: str) -> Dict[str, Any]:
         """查詢合成任務狀態（Waiting / Proccessing / Success / Error）"""
@@ -266,7 +264,7 @@ class AtenAPI:
             time.sleep(poll_interval)
 
     # ------------------------------------------------------------------
-    # 七、Get Audio File
+    # Get Audio File
     # ------------------------------------------------------------------
     def download_audio(self, synthesis_path: str, output_path: str, retries: int = 5) -> str:
         """
@@ -343,7 +341,7 @@ class AtenAPI:
     # ------------------------------------------------------------------
     @staticmethod
     def _raise_for_error(resp: requests.Response, message: str):
-        """依附件一的 http status / error code 拋出友善錯誤"""
+        """依 http status / error code 對照表拋出友善錯誤"""
         if resp.status_code == 200:
             return
 

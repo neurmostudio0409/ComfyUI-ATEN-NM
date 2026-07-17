@@ -103,8 +103,8 @@ def resolve_voice_id(label: str) -> str:
 def _print_api_key_help():
     print("\n請確保：")
     print("1. 複製 config/.env.example 為 config/.env")
-    print("2. 在 config/.env 中設定 ATEN_API_TOKEN（User Settings 取得）")
-    print("3. 企業/離線版客戶請一併設定 ATEN_API_URL")
+    print("2. 在 config/.env 中設定 ATEN_API_TOKEN")
+    print("3. 如使用自訂 API Server，請一併設定 ATEN_API_URL")
 
 
 def _synthesize_and_load(ssml: str, silence_scale: float, timeout: float):
