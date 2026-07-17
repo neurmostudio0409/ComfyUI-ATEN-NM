@@ -99,6 +99,28 @@ def test_build_ssml_prosody_and_lang(pkg):
 # API 客戶端（不打網路）
 # ----------------------------------------------------------------------
 
+def test_voice_labels_chinese_and_resolve(pkg, monkeypatch):
+    """下拉顯示名為中文（名｜性別｜語系），並可反查 model_id；舊工作流直接給 model_id 也相容"""
+    nodes = sys.modules[f"{PKG_NAME}.modules.aten_nodes"]
+    monkeypatch.delenv("ATEN_API_TOKEN", raising=False)
+    monkeypatch.setattr(nodes, "_CACHED_VOICE_LABELS", None)
+    labels = nodes.get_voice_list()
+    assert labels
+    assert all("｜" in label for label in labels)
+    assert nodes.resolve_voice_id("沉穩男聲-裕祥｜男聲｜中英文") == "Aaron"
+    assert nodes.resolve_voice_id("Shawn_taigi") == "Shawn_taigi"
+
+
+def test_voice_label_includes_age_when_available(pkg):
+    """API 或手動表提供年齡時，顯示名要包含年齡欄位"""
+    nodes = sys.modules[f"{PKG_NAME}.modules.aten_nodes"]
+    label = nodes._voice_label({
+        "model_id": "X", "name": "測試男聲-小明", "gender": "男聲",
+        "age": "青年", "languages": ["中英文"],
+    })
+    assert label == "測試男聲-小明｜男聲｜青年｜中英文"
+
+
 def test_api_requires_token(pkg, monkeypatch):
     """無 token 須拋 ValueError（清掉環境變數，避免本機 .env 影響）"""
     api = _api_module()

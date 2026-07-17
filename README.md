@@ -31,6 +31,9 @@ ComfyUI-ATEN-NM/
 | 節點 | 說明 |
 |------|------|
 | 🎙️ **ATEN 語音 / Speech** | 純文字輸入，自動組 SSML（含保留字元 escape）。可選聲優、語言、語速、音調、音量、停頓微調。輸出 `AUDIO` 與組好的 `ssml` 字串 |
+
+聲優下拉選單以中文顯示：`中文名｜性別｜年齡｜語系`（例：`沉穩男聲-裕祥｜男聲｜中英文`），內部自動對應回 `model_id`。
+**年齡**：ATEN API 不提供年齡欄位；若需顯示，請在 `config/settings.py` 的 `VOICE_AGE_OVERRIDES` 手動維護（未來 API 若提供 `age`/`attrs.年齡` 會自動優先採用）。
 | 📜 **ATEN SSML 合成 (進階)** | 直接輸入完整 SSML v1.5，支援 `<phoneme>`（注音/IPA/ARPAbet/臺羅/客語音標）、`<break>`、`<prosody>`、`<lang>`、`<say-as>` |
 | 📋 **ATEN 聲優列表 / Get Voices** | 查詢帳號可用聲優（model_id / name / description） |
 

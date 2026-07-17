@@ -14,40 +14,90 @@ from ..config.settings import (
     DEFAULT_LANGUAGE,
     DEFAULT_VOICES,
     LANGUAGE_OPTIONS,
+    VOICE_AGE_OVERRIDES,
 )
 from .aten_api import AtenAPI, AtenAPIError, build_ssml, get_temp_directory
 from .audio_utils import load_audio_as_comfyui_format
 
-# 全域變數：快取聲優列表
-_CACHED_VOICES = None
+# 全域變數：快取聲優「中文顯示名」列表，以及 顯示名 → model_id 對照表
+_CACHED_VOICE_LABELS = None
+_VOICE_LABEL_TO_ID = {}
+
+
+def _voice_age(model: dict) -> str:
+    """取得聲優年齡：API 的 age / attrs.年齡 優先，其次 config 手動維護表"""
+    age = model.get("age")
+    if not age:
+        attrs = model.get("attrs")
+        if isinstance(attrs, dict):
+            age = attrs.get("年齡") or attrs.get("age")
+    if not age:
+        model_id = model.get("model_id") or model.get("id")
+        age = VOICE_AGE_OVERRIDES.get(str(model_id), "")
+    return str(age) if age else ""
+
+
+def _voice_label(model: dict) -> str:
+    """組出下拉選單的中文顯示名：中文名｜性別｜年齡｜語系"""
+    name = model.get("name") or model.get("model_id") or "未知聲優"
+    parts = [str(name)]
+    gender = model.get("gender")
+    if gender:
+        parts.append(str(gender))
+    age = _voice_age(model)
+    if age:
+        parts.append(age)
+    languages = model.get("languages") or []
+    if languages:
+        parts.append("/".join(str(lang) for lang in languages))
+    return "｜".join(parts)
+
+
+def _build_voice_labels(models):
+    """把 models 轉成顯示名列表並填入對照表（重名時附 model_id 區別）"""
+    global _VOICE_LABEL_TO_ID
+    labels = []
+    label_map = {}
+    for m in models:
+        if not isinstance(m, dict):
+            continue
+        model_id = m.get("model_id") or m.get("id") or m.get("name")
+        if not model_id:
+            continue
+        label = _voice_label(m)
+        if label in label_map and label_map[label] != str(model_id):
+            label = f"{label}（{model_id}）"
+        label_map[label] = str(model_id)
+        labels.append(label)
+    _VOICE_LABEL_TO_ID = label_map
+    return labels
 
 
 def get_voice_list():
-    """獲取聲優列表（model_id），使用快取避免重複請求"""
-    global _CACHED_VOICES
+    """獲取聲優中文顯示名列表，使用快取避免重複請求"""
+    global _CACHED_VOICE_LABELS
 
-    if _CACHED_VOICES is not None:
-        return _CACHED_VOICES
+    if _CACHED_VOICE_LABELS is not None:
+        return _CACHED_VOICE_LABELS
 
     try:
         api = AtenAPI()
-        models = api.get_models()
-        voice_ids = []
-        for m in models:
-            if isinstance(m, dict):
-                vid = m.get("model_id") or m.get("id") or m.get("name")
-                if vid:
-                    voice_ids.append(str(vid))
-        if voice_ids:
-            _CACHED_VOICES = voice_ids
-            print(f"✅ 已載入 {len(voice_ids)} 位 ATEN 聲優")
-            return voice_ids
+        labels = _build_voice_labels(api.get_models())
+        if labels:
+            _CACHED_VOICE_LABELS = labels
+            print(f"✅ 已載入 {len(labels)} 位 ATEN 聲優")
+            return labels
     except Exception as e:
         print(f"⚠️ 無法取得 ATEN 聲優列表: {e}")
 
-    _CACHED_VOICES = DEFAULT_VOICES
-    print(f"⚠️ 使用預設聲優列表 ({len(DEFAULT_VOICES)} 位)")
-    return DEFAULT_VOICES
+    _CACHED_VOICE_LABELS = _build_voice_labels(DEFAULT_VOICES)
+    print(f"⚠️ 使用預設聲優列表 ({len(_CACHED_VOICE_LABELS)} 位)")
+    return _CACHED_VOICE_LABELS
+
+
+def resolve_voice_id(label: str) -> str:
+    """顯示名 → model_id。找不到時視為使用者直接給了 model_id（相容舊工作流）"""
+    return _VOICE_LABEL_TO_ID.get(label, label)
 
 
 def _print_api_key_help():
@@ -108,8 +158,8 @@ class AtenSpeechNode:
                     "tooltip": "要轉換成語音的文字（上限 2000 字元）",
                 }),
                 "voice": (voices, {
-                    "default": voices[0] if voices else "Aaron",
-                    "tooltip": "聲優（從 ATEN API 動態載入）",
+                    "default": voices[0] if voices else "沉穩男聲-裕祥｜男聲｜中英文",
+                    "tooltip": "聲優（中文名｜性別｜語系，從 ATEN API 動態載入）",
                 }),
             },
             "optional": {
@@ -180,9 +230,11 @@ class AtenSpeechNode:
             return (None, "")
 
         lang_type = LANGUAGE_OPTIONS.get(language, "TW")
+        voice_id = resolve_voice_id(voice)
+        print(f"🎤 聲優: {voice} → {voice_id}")
         ssml = build_ssml(
             text,
-            voice=voice,
+            voice=voice_id,
             pitch=pitch,
             rate=speed,
             volume=volume,

@@ -48,8 +48,23 @@ CATEGORY_UTILS = "audio/ATEN/utils"
 # ----------------------------------------------------------------------
 # 聲優與語言
 # ----------------------------------------------------------------------
-# PDF 範例中出現的聲優，API 查詢失敗時的 fallback
-DEFAULT_VOICES = ["Aaron", "Bella_host", "Shawn", "Aaron_literary"]
+# API 查詢失敗時的 fallback（欄位與 GET /models 回傳一致）
+DEFAULT_VOICES = [
+    {"model_id": "Aaron", "name": "沉穩男聲-裕祥", "gender": "男聲", "languages": ["中英文"]},
+    {"model_id": "Shawn", "name": "斯文男聲-俊昇", "gender": "男聲", "languages": ["中英文"]},
+    {"model_id": "Aurora", "name": "穩重女聲-嘉妮", "gender": "女聲", "languages": ["中英文"]},
+    {"model_id": "Bella_host_bert", "name": "動人女聲-貝拉", "gender": "女聲", "languages": ["中英文"]},
+]
+
+# 聲優年齡標註：ATEN API「不提供」年齡欄位（實測回傳只有
+# model_id/name/description/gender/languages/attrs.應用）。
+# 需要在下拉選單顯示年齡時，請在此手動維護：
+#   key = model_id，value = 顯示文字（如 "青年"、"中年"、"30歲"）
+# 若未來 API 提供 age 或 attrs.年齡，會自動優先採用 API 的值。
+VOICE_AGE_OVERRIDES = {
+    # "Aaron": "中年",
+    # "Bella_host_bert": "青年",
+}
 
 # <lang> 支援的語言（UI 顯示 → lang_type）
 LANGUAGE_OPTIONS = {
@@ -127,7 +142,7 @@ def load_env(verbose: bool = False) -> bool:
             print("✅ 已載入 ATEN API token")
         else:
             print("⚠️ ATEN_API_TOKEN 未配置")
-            print(f"   請複製 config/.env.example 為 config/.env 並設定 ATEN_API_TOKEN")
+            print("   請複製 config/.env.example 為 config/.env 並設定 ATEN_API_TOKEN")
     return bool(token)
 
 
