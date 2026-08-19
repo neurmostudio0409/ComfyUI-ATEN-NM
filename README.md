@@ -96,3 +96,8 @@ GET synthesis_path → WAV 下載到 temp（載入後即刪）→ 轉為 AUDIO �
 
 - 議題追蹤：Redmine「NMRehab 中控系統 › ComfyUI 套件開發 (Custom Nodes)」子專案
 - 姊妹套件：`ComfyUI-voai-NM`（VOAI TTS）、`ComfyUI-Veo-NM`、`ComfyUI-replicate-api-NM`
+
+## 授權 License
+
+本專案採用 [GNU General Public License v3.0](LICENSE) 授權。
+This project is licensed under the GNU General Public License v3.0 — see the [LICENSE](LICENSE) file for details.
