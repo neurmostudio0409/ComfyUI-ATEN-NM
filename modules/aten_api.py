@@ -1,6 +1,4 @@
 """
-ATEN AIVoice API 客戶端
-
 合成流程：
 1. POST Synthesize SSML 取得 synthesis_id
 2. 輪詢 Get Synthesize Status 直到 Success
@@ -8,6 +6,7 @@ ATEN AIVoice API 客戶端
 """
 
 import os
+import random
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -19,6 +18,9 @@ from ..config.settings import (
     ERROR_CODES,
     HTTP_STATUS_HINTS,
     MAX_TEXT_LENGTH,
+    QUEUE_FULL_CODE,
+    QUEUE_FULL_RETRY_DELAYS_S,
+    QUEUE_FULL_RETRY_JITTER,
     SSML_ESCAPES,
     get_api_token,
     get_base_url,
@@ -213,9 +215,21 @@ class AtenAPI:
             payload["is_customized_poly_list_used"] = is_customized_poly_list_used
 
         url = f"{self.base_url}/api/v1/syntheses/api_token"
-        resp = self.session.post(url, json=payload, timeout=60)
-        self._raise_for_error(resp, "送出合成任務失敗")
-        return resp.json()
+        # #1594：42210（隊列已滿）是暫時性的，退避重試；其餘錯誤直接往上拋
+        for attempt in range(len(QUEUE_FULL_RETRY_DELAYS_S) + 1):
+            resp = self.session.post(url, json=payload, timeout=60)
+            try:
+                self._raise_for_error(resp, "送出合成任務失敗")
+            except AtenAPIError as e:
+                if e.code != QUEUE_FULL_CODE or attempt >= len(QUEUE_FULL_RETRY_DELAYS_S):
+                    raise
+                wait = QUEUE_FULL_RETRY_DELAYS_S[attempt]
+                wait = round(wait * (1 + random.random() * QUEUE_FULL_RETRY_JITTER), 1)
+                print(f"⏳ ATEN 隊列已滿（{QUEUE_FULL_CODE}），{wait} 秒後重試 "
+                      f"（第 {attempt + 1}/{len(QUEUE_FULL_RETRY_DELAYS_S)} 次）")
+                time.sleep(wait)
+                continue
+            return resp.json()
 
     # ------------------------------------------------------------------
     # Get Synthesize Status
@@ -349,13 +363,29 @@ class AtenAPI:
         detail = ""
         try:
             body = resp.json()
-            if isinstance(body, dict):
-                code = body.get("code") or body.get("error_code")
-                detail = body.get("message") or body.get("detail") or ""
         except Exception:
+            body = None
+        if isinstance(body, dict):
+            code = body.get("code") or body.get("error_code")
+            detail = body.get("message") or body.get("detail") or ""
+        if not detail:
+            # body 不是 dict（或是 dict 但沒有訊息欄位）時也要留下線索。
+            # 實測 ATEN 的 422 回的就是 {"error_code":42210} —— 只有碼、沒有 message，
+            # 原本的寫法會讓整個 body 靜靜消失，日誌只剩「HTTP 422」查不出原因。
             detail = (resp.text or "")[:200]
 
+        # ATEN 回的碼可能是字串；ERROR_CODES 是 int 鍵，不轉就永遠查不到說明
+        try:
+            code = int(code) if code is not None else None
+        except (TypeError, ValueError):
+            pass
+
         hint = HTTP_STATUS_HINTS.get(resp.status_code, "")
+        # ATEN 會回規格書沒列的碼（實測遇過 42208）。查不到時明講，
+        # 免得下一個人以為是我們漏寫對照表而去翻規格書找不到。
+        if code is not None and code not in ERROR_CODES:
+            hint = (f"{hint}；error {code} 不在 ATEN 規格書的對照表內"
+                    if hint else f"error {code} 不在 ATEN 規格書的對照表內")
         parts = [message, f"HTTP {resp.status_code}"]
         if hint:
             parts.append(hint)
