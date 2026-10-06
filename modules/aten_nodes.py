@@ -14,6 +14,7 @@ from ..config.settings import (
     DEFAULT_LANGUAGE,
     DEFAULT_VOICES,
     LANGUAGE_OPTIONS,
+    LANG_REQUIREMENTS,
     VOICE_AGE_OVERRIDES,
 )
 from .aten_api import AtenAPI, AtenAPIError, build_ssml, get_temp_directory
@@ -22,6 +23,9 @@ from .audio_utils import load_audio_as_comfyui_format
 # 全域變數：快取聲優「中文顯示名」列表，以及 顯示名 → model_id 對照表
 _CACHED_VOICE_LABELS = None
 _VOICE_LABEL_TO_ID = {}
+#: model_id → 該聲優支援的語言（ATEN /models 的 languages 欄位）。
+#: 用來在送出前擋掉「客語聲優被叫去唸台語」這種配錯（#1594）。
+_VOICE_LANGUAGES = {}
 
 
 def _voice_age(model: dict) -> str:
@@ -55,9 +59,10 @@ def _voice_label(model: dict) -> str:
 
 def _build_voice_labels(models):
     """把 models 轉成顯示名列表並填入對照表（重名時附 model_id 區別）"""
-    global _VOICE_LABEL_TO_ID
+    global _VOICE_LABEL_TO_ID, _VOICE_LANGUAGES
     labels = []
     label_map = {}
+    lang_map = {}
     for m in models:
         if not isinstance(m, dict):
             continue
@@ -68,8 +73,10 @@ def _build_voice_labels(models):
         if label in label_map and label_map[label] != str(model_id):
             label = f"{label}（{model_id}）"
         label_map[label] = str(model_id)
+        lang_map[str(model_id)] = list(m.get("languages") or [])
         labels.append(label)
     _VOICE_LABEL_TO_ID = label_map
+    _VOICE_LANGUAGES = lang_map
     return labels
 
 
@@ -93,6 +100,28 @@ def get_voice_list():
     _CACHED_VOICE_LABELS = _build_voice_labels(DEFAULT_VOICES)
     print(f"⚠️ 使用預設聲優列表 ({len(_CACHED_VOICE_LABELS)} 位)")
     return _CACHED_VOICE_LABELS
+
+
+def check_voice_language(voice_id: str, lang_type: str):
+    """聲優支援該語言嗎？不支援回一句說明，支援（或資訊不足）回 None。
+
+    規格書 Revision History v1.1.103：「若需要其他語系，**除了 model 要支援外**，…」
+    —— 聲優不支援時 ATEN 會拒絕，但回的碼看不出是哪裡配錯。送出前先擋，
+    訊息才講得清楚（實際遇過：「台語生成」工作流配到客語聲優 Shawn_hakka）。
+
+    `languages` 拿不到時（離線後備清單、ATEN 新增欄位變動）**不擋** ——
+    寧可讓 API 自己判斷，也不要因為我們的資料不全而擋掉合法組合。
+    """
+    need = LANG_REQUIREMENTS.get(lang_type)
+    if not need:
+        return None                      # EN 或未知語言：不檢查
+    langs = _VOICE_LANGUAGES.get(str(voice_id))
+    if not langs:
+        return None                      # 沒有這位聲優的語言資訊：不擋
+    if any(need in str(l) for l in langs):
+        return None
+    return (f"聲優 {voice_id} 支援的語言是 {'/'.join(langs)}，"
+            f"不支援 {lang_type}。請改用支援「{need}語」的聲優，或把語言改成該聲優支援的。")
 
 
 def resolve_voice_id(label: str) -> str:
@@ -133,8 +162,9 @@ def _synthesize_and_load(ssml: str, silence_scale: float, timeout: float):
             pass
         if audio_dict:
             return (audio_dict,)
-    print("❌ 語音生成失敗！")
-    return (None,)
+        # #1594：檔案在但解不開 —— 一樣不能回 None 給下游
+        raise AtenAPIError(f"音檔下載了但無法解析：{audio_path}")
+    raise AtenAPIError("語音生成失敗：沒有取得音檔")
 
 
 # ======================
@@ -226,12 +256,20 @@ class AtenSpeechNode:
         print("=" * 60)
 
         if not text.strip():
-            print("❌ 文字內容為空")
-            return (None, "")
+            # #1594：不能回 (None,…)。節點宣告輸出 AUDIO，回 None 會讓下游
+            # SaveAudio 死在 `audio["waveform"]` 的 TypeError，真正原因只剩
+            # terminal 的 print。raise 才會讓 ComfyUI 顯示這一行。
+            raise ValueError("文字內容為空")
 
         lang_type = LANGUAGE_OPTIONS.get(language, "TW")
         voice_id = resolve_voice_id(voice)
         print(f"🎤 聲優: {voice} → {voice_id}")
+
+        # #1594：送出前先擋掉聲優／語言不匹配，否則只會收到看不出原因的 422
+        mismatch = check_voice_language(voice_id, lang_type)
+        if mismatch:
+            print(f"❌ {mismatch}")
+            raise ValueError(mismatch)
         ssml = build_ssml(
             text,
             voice=voice_id,
@@ -248,15 +286,15 @@ class AtenSpeechNode:
         except ValueError as e:
             print(f"❌ API 初始化失敗: {e}")
             _print_api_key_help()
-            return (None, ssml)
+            raise
         except AtenAPIError as e:
             print(f"❌ ATEN API 錯誤: {e}")
-            return (None, ssml)
+            raise
         except Exception as e:
             print(f"❌ 生成時發生錯誤: {e}")
             import traceback
             traceback.print_exc()
-            return (None, ssml)
+            raise
 
 
 class AtenSSMLNode:
@@ -307,23 +345,22 @@ class AtenSSMLNode:
         print("=" * 60)
 
         if not ssml.strip():
-            print("❌ SSML 內容為空")
-            return (None,)
+            raise ValueError("SSML 內容為空")
 
         try:
             return _synthesize_and_load(ssml, silence_scale, float(timeout))
         except ValueError as e:
             print(f"❌ API 初始化失敗: {e}")
             _print_api_key_help()
-            return (None,)
+            raise
         except AtenAPIError as e:
             print(f"❌ ATEN API 錯誤: {e}")
-            return (None,)
+            raise
         except Exception as e:
             print(f"❌ 生成時發生錯誤: {e}")
             import traceback
             traceback.print_exc()
-            return (None,)
+            raise
 
 
 # ======================
